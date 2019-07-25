@@ -6,5 +6,6 @@ A drawing tool originally designed for building cities of streets and buildings 
 * Shift (drag)
 * Create visible objects (i.e. lines)
 * Determine in which square the mouse cursor resides
+* Undo Option
 
-![image](https://user-images.githubusercontent.com/29380093/61749811-916bd000-ad58-11e9-927b-9805af06f061.png)
+![DrawingDemoBird](https://user-images.githubusercontent.com/29380093/61849400-f9f4a300-ae65-11e9-832b-e5ae6ca70886.PNG)
