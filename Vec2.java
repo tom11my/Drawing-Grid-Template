@@ -63,7 +63,9 @@ public class Vec2 {
 	public Vec2 scaledBy (double d) {
 		return new Vec2((float) (this.x*d), (float) (this.y*d));
 	}
-	
+	public boolean equals (Vec2 v) {
+		return this.x == v.getX() && this.y == v.getY();
+	}
 	public String toString() {
 		return "x: " + x + " y: " + y;
 	}

@@ -12,6 +12,10 @@ public class Street {
 	public void addNode(Vec2 node) {
 		nodes.add(node);
 	}
+	//removes the most recently added node
+	public void removeNode() {
+		nodes.remove(nodes.size()-1);
+	}
 	public ArrayList<Vec2> getNodes() {
 		return nodes;
 	}
@@ -42,7 +46,6 @@ public class Street {
 			
 			//accounts for change of direction of line
 			int dirFactor = 1;
-			//originally dy and dx treated as int
 			float dy = (int) l.getDir().getY();
 			float dx = (int) l.getDir().getX();
 			System.out.println(new Vec2(dx, dy));
@@ -145,5 +148,12 @@ public class Street {
 		public Vec2 findPoint(double constant) {
 			return (dir.scaledBy(constant)).plus(start);
 		}
+	}
+	public String toString () {
+		String s = "";
+		for(Vec2 loc: nodes) {
+			s += loc + " ";
+		}
+		return s;
 	}
 }

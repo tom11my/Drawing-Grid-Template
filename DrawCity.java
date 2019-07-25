@@ -68,6 +68,21 @@ public class DrawCity extends JFrame {
 				canvas.repaint();
 			}
 		});
+		JButton undo = new JButton("Undo");
+		btnPanel.add(undo);
+		undo.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				canvas.isSecondClicked = false;
+				canvas.isFirstClicked = false;
+				//canvas.isFirstClicked = canvas.getLatestObject().equals("Street") ? true: false;
+				canvas.fresh = true;
+				endStreetPressed = false;
+				buildingPressed = false;
+				startStreetPressed = false;
+				canvas.undoLatestAction();
+			}
+		});
 		//Set up a custom drawing JPanel
 		canvas = new DrawCanvas();
 		//canvas.setPreferredSize(new Dimension(CANVAS_WIDTH, CANVAS_HEIGHT));
@@ -102,10 +117,12 @@ public class DrawCity extends JFrame {
 		private Street tempStreet;
 		private ArrayList<Street> streets = new ArrayList<Street>();
 		private ArrayList<Vec2> tempStreetLocs = new ArrayList<Vec2>();
+		ArrayList<Vec2> previousNodes = new ArrayList<Vec2>();
 		
 		private ArrayList<Building> buildings = new ArrayList<Building>();
 		private ArrayList<Vec2> tempBuildingLocs = new ArrayList<Vec2>();
 		
+		private ArrayList<Intersection> intersections = new ArrayList<Intersection>();
 		private Vec2 curLoc = new Vec2(-1, -1);
 		private Vec2 scrollLoc = new Vec2(0, 0);
 		private Vec2 shift = new Vec2(0, 0);
@@ -115,10 +132,11 @@ public class DrawCity extends JFrame {
 		private double zoomFactor = 0.0;
 		private boolean isFirstClicked, isSecondClicked;
 		private boolean fresh = true;
+		private String latestObj;
 		
 		private final Color BUILDING_COLOR = Color.DARK_GRAY;
 		private final Color STREET_COLOR = new Color(140, 0, 255);
-		private final Color TEMP_STREET_COLOR = new Color(180, 180, 255);
+		private Color TEMP_STREET_COLOR = new Color(180, 180, 255);
 		private final Color TEMP_BUILDING_COLOR = Color.LIGHT_GRAY;
 		//new Color(0, 144, 201);
 		//boolean used to ensure that firstClick is not changed more than once before secondClick is found and the rectangle drawn
@@ -132,6 +150,7 @@ public class DrawCity extends JFrame {
 		@Override
 		public void paintComponent(Graphics g) {
 			//super.paintComponent(g);
+			//System.out.println("intersections " + intersections);
 			Graphics2D g2d = (Graphics2D) g;
 			//blank screen each time repaint() is internally called
 			g2d.setColor(Color.BLACK);
@@ -166,7 +185,6 @@ public class DrawCity extends JFrame {
 					//must go outside the "onCanvas" loop below to allow real-time updates not based on mouseLoc
 					if (endStreetPressed) {
 						//startStreetPressed goes to false in action listener
-						System.out.println("remove attempted");
 						removeTemporaryStreetColor();
 						streets.add(tempStreet);
 						//reset initial conditions
@@ -224,8 +242,12 @@ public class DrawCity extends JFrame {
 								else if (isFirstClicked && isSecondClicked){
 									secondClick = new Vec2(col, row);
 									tempStreet.addNode(secondClick);
-									applyStreetColor(tempStreet);
+									//applyStreetColor(tempStreet);
+									//System.out.println("reached only once");
+									//System.out.println(tempStreet.getNodes());
+									applyStreetColor(tempStreet, tempStreet.getNodes().get(tempStreet.getNodes().size()-2), secondClick);
 									isSecondClicked = false;
+									//tempStreet = null;
 								}
 							}
 						}
@@ -243,6 +265,25 @@ public class DrawCity extends JFrame {
 			//set variables applied to transform to 0
 			zoomFactor = 0;
 			shift = new Vec2(0, 0);
+			
+		}
+		//the handy dandy undo implementation
+		public void undoLatestAction() {
+			if(latestObj.equals("Street")) {
+				removeTemporaryStreetColor();
+				for(Vec2 v: previousNodes) {
+					squares[(int)v.getY()][(int)v.getX()].setColor(Color.white);
+				}
+				System.out.println(tempStreet);
+				tempStreet.removeNode();
+			}
+			else {
+				removeTemporaryBuildingColor();
+				removeBuildingColor(buildings.get(buildings.size()-1));
+				buildings.remove(buildings.size()-1);
+			}
+			
+			canvas.repaint();
 		}
 		//building related methods
 		private void addBuildings() {
@@ -256,6 +297,8 @@ public class DrawCity extends JFrame {
 						squares[y][x].setColor(BUILDING_COLOR);
 				}
 			}
+			latestObj = "Building";
+			canvas.repaint();
 		}
 		//shows "pseudo-building" so user can ensure that he adds the building he wants
 		public void applyTemporaryBuildingColor (Building b) {
@@ -276,16 +319,93 @@ public class DrawCity extends JFrame {
 			}
 			this.repaint();
 		}
+		public void removeBuildingColor(Building b) {
+			for(int y = (int)b.getLoc().getY(); y <= (int)(b.getLoc().getY() + b.getHeight()); y++) {
+				for(int x = (int)b.getLoc().getX(); x <= (int)(b.getLoc().getX() + b.getWidth()); x++) {
+					if(squares[y][x].getColor() == BUILDING_COLOR) {
+						squares[y][x].setColor(Color.white);
+					}
+				}
+			}
+		}
+		
 		//street related methods
+		//FLAW: Multiple connections between two line segments will create future confusion when a single car is traveling
+		//FIX: Redo the way intersections are created but with lines and exactness. RIP
+		public void applyStreetColor(Street s, Vec2 start, Vec2 end) {
+			//fixing intersection problem with previousNode
+			ArrayList<Vec2> toBeColored = s.findColoredLocsBetweenNodes(start, end);
+			Vec2 previous = toBeColored.get(0);
+			//prevents multiple "intersections" from being performed due to multiple overlaps in surrounding colored squares
+			boolean reached = false;
+			int counter = 0;
+			//counter used to set reached back to false so that multiple intersections can be detected along a single line
+			ArrayList<Vec2> curColored = new ArrayList<Vec2>();
+			//curColored keeps track of locations colored between the two nodes start and end
+			for(int i = 0; i < toBeColored.size(); i++) {
+				Vec2 loc = toBeColored.get(i);
+				int x = (int)loc.getX();
+				int y = (int)loc.getY();
+				//if(squares[y][x].getColor() == STREET_COLOR)
+				//Check if 8 squares surrounding a given square are STREET_COLOR. We call this an intersection.
+				Vec2 surrounding = checkSurroundingForColor(x, y, STREET_COLOR);
+				
+					
+				//verify that surrounding is not part of previous node connector (creates unintentional intersection)
+				boolean isPartOfPrevious = false;
+				for(Vec2 prev: previousNodes) {
+					System.out.println(surrounding);
+					if(surrounding != null && surrounding.equals(prev))
+						isPartOfPrevious = true;
+				}
+				if(surrounding != null && !isPartOfPrevious &&(surrounding.getX() != previous.getX() || surrounding.getY() != previous.getY()) && !reached) {
+					//FLAW 2: Every surrounding square that is colored is considered an intersection.
+					//What we really want is only intersections not associated with endpoints (unintentional intersections)
+					//POSSIBLE FIX: Any perceived intersection (a surrounding square colored) must not be from the previous two nodes (two lines can't intersect at more than once place)
+					intersections.add(new Intersection(x, y));
+					reached = true;
+					counter = 0;
+				}
+				//requires a distance of 4 between intersecting points along a single line segment (street node connector)
+
+				if(counter > 3)
+					reached = false;
+				//prevents line from being "broken" when undo button is pressed for intersecting lines
+				if(squares[y][x].getColor() != STREET_COLOR)
+					curColored.add(new Vec2(x, y));
+				squares[y][x].setColor(STREET_COLOR);
+				previous = new Vec2(x, y);
+				counter++;
+			}
+			previousNodes = curColored;
+			latestObj = "Street";
+		}
+		public Vec2 checkSurroundingForColor(int x, int y, Color c) {
+			
+			//fails to account for border (out of bounds but oh well for now)
+			for(int i = -1; i < 2; i++) {
+				for(int j = -1; j < 2; j++) {
+					if(squares[y+i][x+j].getColor() == c)
+						return new Vec2(x+j, y+i);
+				}
+			}
+			return null;
+		}
+		/*
 		public void applyStreetColor(Street s) {
 			//shoot lines from direction determined from nodes at index i and i+1
 			//squares that are intercepted by the line are colored
 			//assume looping through all nodes and two are acquired
 			for(Vec2 loc: s.findColoredLocs()) {
+				//add to intersection list if the square at loc already forms part of a street
+				//problem is that it is reprinting over and over even if it does not need to
+				if(squares[(int)loc.getY()][(int)loc.getX()].getColor() == STREET_COLOR)
+					intersections.add(new Intersection((int)loc.getX(), (int)loc.getY()));
 				squares[(int)loc.getY()][(int)loc.getX()].setColor(STREET_COLOR);
 			}
 			this.repaint();
 		}
+		*/
 		public void applyTemporaryStreetColor(Street s, Vec2 startNode, Vec2 endNode) {
 			//Street s is really just tempStreet
 			for (Vec2 loc: s.findColoredLocsBetweenNodes(startNode, endNode)) {
@@ -368,8 +488,12 @@ public class DrawCity extends JFrame {
 		public Dimension getPreferredSize() {
 			return new Dimension(CANVAS_WIDTH, CANVAS_HEIGHT);
 		}
+		public String getLatestObject () {
+			return this.latestObj;
+		}
 		
 	}
+	
 	public static void main(String[] args) {
 		//Run GUI on the Event-Dispatcher Thread for thread safety
 		SwingUtilities.invokeLater(new Runnable() {
